@@ -5,7 +5,8 @@ import type { Session } from "@supabase/supabase-js";
 import AuthPage from "./routes/auth-route";
 import Navbar from "./components/Navbar";
 
-const HomeRoute = lazy(() => import("./routes/home-route"));
+const VaultsRoute = lazy(() => import("./routes/vaults-route"));
+const VaultRoute = lazy(() => import("./routes/vault-route"));
 const WikiRoute = lazy(() => import("./routes/wiki-route"));
 const GraphRoute = lazy(() => import("./routes/graph-route"));
 const SearchRoute = lazy(() => import("./routes/search-route"));
@@ -28,7 +29,6 @@ export default function App() {
   }, []);
 
   if (session === undefined) return <LoadingSpinner />;
-
   if (!session) return <AuthPage />;
 
   return (
@@ -38,7 +38,9 @@ export default function App() {
         <main className="max-w-7xl mx-auto px-4 py-6">
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
-              <Route path="/" element={<HomeRoute />} />
+              <Route path="/" element={<VaultsRoute />} />
+              <Route path="/vault/:id" element={<VaultRoute />} />
+              <Route path="/vault/:id/graph" element={<GraphRoute />} />
               <Route path="/wiki/:id" element={<WikiRoute />} />
               <Route path="/graph" element={<GraphRoute />} />
               <Route path="/search" element={<SearchRoute />} />

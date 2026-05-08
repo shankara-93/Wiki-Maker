@@ -330,6 +330,13 @@ working on the codebase — separate from runtime AI behavior.
 - ✅ Re-run AI processing
 - ✅ Delete anything (originals + wiki pages)
 
+### Vault Health (Future Phase)
+- Cluster-based outlier detection: analyze pages within a vault using embeddings,
+  find statistical outliers (pages that don't fit the vault's dominant theme cluster)
+- Surface: "3 pages in your GSI vault seem off-topic. Want to move them?"
+- Suggest: move to existing vault, or create a new vault from the cluster
+- Vault fingerprint auto-updates as the vault grows
+
 ---
 
 ## Branch & Repo
@@ -339,27 +346,128 @@ Repo: `shankara-93/wiki-maker`
 
 ---
 
-## What's Built So Far (Phase 0)
+## Build Plan
 
-A simplified V1 was already coded as a starting point:
-- Backend: FastAPI + Supabase + Claude API + scraping
-- Extension: Chrome Manifest V3 with one-click capture
-- Frontend: React + Tailwind + auth + browse + search + graph
+### Phase 0 — Done (V1 Foundation)
+Flat wiki system: single `wiki_pages` table, no vaults, fixed categories.
+Backend + extension + frontend all working.
 
-**This V1 does NOT yet have:**
-- Dynamic vaults (currently flat — single category per page)
-- Source-anchored architecture (raw + wiki separation)
-- Typed relationships (currently just shared tags)
-- Confidence/recency/lifecycle
-- Engagement loops
-- MCP server
-
-These are the gaps to close in the next phases.
+**Gaps**: no vaults, no source separation, no typed relationships, no confidence scoring,
+no engagement loops, no MCP server.
 
 ---
 
-## Next Step
+### Phase 1 — Source-Anchored Vaults (Current)
 
-Move from brainstorming to **full feature list + phased build plan**.
-Decide what V2 looks like and build it iteratively without losing what
-already works in V1.
+**Goal**: Replace the flat model with the real data model. Everything else builds on this.
+
+**DB changes** (`supabase/schema_v2.sql`):
+- New `vaults` table (user-created, dynamic)
+- New `captures` table (raw content, immutable source of truth)
+- Updated `wiki_pages` (add vault_id, entity_type, confidence, source_count, tags as text[])
+- New `citations` table (claim → capture mapping)
+- New `relationships` table (typed knowledge graph edges)
+- pgvector extension + embedding columns on wiki_pages and captures
+- All RLS policies updated for vault isolation
+
+**Backend changes**:
+- `vaults.py` — CRUD: create, list, get, update, delete vault
+- `captures.py` — store raw content (immutable), re-process endpoint
+- Updated `main.py` — new routes: `/api/vaults`, `/api/captures`, vault-scoped wikis
+- Updated `database.py` — all queries scoped to vault_id
+- Updated `llm_processor.py` — two-step: (1) analyze for vault suggestion, (2) compile wiki page
+
+**Frontend changes**:
+- New `/vaults` route — vault list, create vault modal
+- New `/vault/:id` route — vault dashboard (pages + graph + captures)
+- Updated capture flow — vault picker step after capture
+- Vault sidebar replaces category sidebar
+
+**Extension changes**:
+- Show vault suggestion in popup ("Save to GSI vault? 87% match")
+- Let user pick different vault or create new
+
+**Deliverable**: A working vault-scoped wiki. Captures are stored separately from wiki pages. User can create vaults and all captures/pages live in a vault.
+
+---
+
+### Phase 2 — AI Vault Intelligence
+
+**Goal**: AI suggests the right vault, deduplicates entity pages, builds citations.
+
+**Features**:
+- `POST /api/vaults/suggest` — given content, return ranked vault suggestions with confidence %
+- Entity deduplication: before creating a wiki page, check if an entity page already exists for this topic (fuzzy title match + embedding similarity). If yes, update it. If no, create new.
+- Citation extraction: LLM identifies specific claims and maps them to exact quotes from the capture
+- Confidence scoring: `high` if 2+ captures agree on the same claim, `medium` if single source, `low` if AI inference only
+- Three modes: Smart (one-click confirm), Confirm Everything (review all fields), Full Manual (to Inbox)
+- Vault fingerprint auto-update after each new capture
+
+**Deliverable**: Captures flow to the right vault automatically. Pages accumulate evidence over time instead of duplicating. Every claim traces back to a source.
+
+---
+
+### Phase 3 — Knowledge Graph + Typed Relationships
+
+**Goal**: Replace untyped tag-sharing edges with semantic typed relationships.
+
+**Features**:
+- LLM extracts typed relationships during wiki compilation: REQUIRES | CONTRADICTS | BUILDS_ON | EXAMPLES | ENABLES | PART_OF | USED_BY | REPLACES
+- `GET /api/vault/:id/graph` returns typed edges with evidence text
+- Frontend graph updated: edge colors by relationship type, hover shows relationship type + evidence
+- Relationship management UI: view, edit, delete relationships
+- Per-vault link_types configuration (vault can restrict which types are allowed)
+
+**Deliverable**: The knowledge graph shows how concepts connect semantically, not just by tag overlap.
+
+---
+
+### Phase 4 — Hybrid Search + Chat Interface
+
+**Goal**: Make the vault queryable conversationally.
+
+**Features**:
+- `pgvector` embeddings generated for every wiki page and capture on save
+- `POST /api/search` — hybrid: keyword (pg FTS) + semantic (cosine similarity) + graph traversal, per vault or global
+- `POST /api/vault/:id/chat` — conversational retrieval: user asks question, backend retrieves relevant pages via hybrid search, Claude synthesizes answer with citations
+- Chat UI: `/vault/:id/chat` route, message history, citation chips on every answer
+- Source display: every answer shows which captures it drew from, with quotes
+
+**Deliverable**: User can ask "What do I know about RAG limitations in my AI vault?" and get a cited, synthesized answer.
+
+---
+
+### Phase 5 — MCP Server + Engagement Loops
+
+**Goal**: Feed the vault back into daily work; keep the user from offloading without learning.
+
+**MCP Server** (`mcp/server.py`):
+- Tools: `list_vaults`, `search_vault`, `get_wiki_page`, `get_related`, `ask_vault`, `save_to_vault`
+- Runs alongside FastAPI as a separate process
+- Auth: same Supabase JWT
+- Config: user drops `~/.claude/mcp.json` with server URL + token
+
+**Engagement**:
+- Capture-time prompt: "Why did you save this? (optional, one sentence)" — stored with capture
+- Weekly digest: `GET /api/engage/digest` — 3 ideas from the week, "do you still remember?"
+- Teach-back mode: `POST /api/engage/teach` — user explains a concept → Claude grades it
+
+**Vault Health** (outlier detection):
+- `POST /api/vault/:id/health` — cluster pages by embedding similarity, surface outliers
+- Returns: pages that don't fit dominant cluster + suggested destination vault or new vault name
+- UI: "Vault Health" panel in vault settings
+
+**Deliverable**: The vault feeds knowledge back into Claude Code/Cursor sessions. Weekly prompts prevent pure cognitive offloading. Vault health catches organizational drift.
+
+---
+
+## Current Phase Status
+
+| Phase | Status | Description |
+|---|---|---|
+| 0 | ✅ Done | V1 flat wiki system |
+| 1 | 🔨 Building | Source-anchored vaults |
+| 2 | ⬜ Planned | AI vault intelligence |
+| 3 | ⬜ Planned | Typed knowledge graph |
+| 4 | ⬜ Planned | Hybrid search + chat |
+| 5 | ⬜ Planned | MCP + engagement loops |

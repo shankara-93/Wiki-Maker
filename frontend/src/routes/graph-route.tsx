@@ -1,42 +1,53 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import Graph from "graphology";
 import Sigma from "sigma";
 import forceAtlas2 from "graphology-layout-forceatlas2";
-import { api, type GraphData } from "../api";
+import { api, type GraphNode, type GraphEdge } from "../api";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  "AI & Machine Learning": "#a78bfa",
-  "Software Engineering": "#60a5fa",
-  "Web Development": "#22d3ee",
-  "Product & SaaS": "#4ade80",
-  "Data Science": "#fbbf24",
-  "DevOps & Infrastructure": "#fb923c",
-  "Business & Startups": "#34d399",
-  "Security & Privacy": "#f87171",
-  "Tools & Productivity": "#818cf8",
-  "Research & Papers": "#f472b6",
-  "Career & Growth": "#2dd4bf",
-  Other: "#64748b",
+const ENTITY_COLORS: Record<string, string> = {
+  concept: "#a78bfa",
+  tool: "#60a5fa",
+  person: "#4ade80",
+  decision: "#fbbf24",
+};
+
+const RELATIONSHIP_COLORS: Record<string, string> = {
+  REQUIRES: "#f87171",
+  CONTRADICTS: "#fb923c",
+  BUILDS_ON: "#60a5fa",
+  EXAMPLES: "#22d3ee",
+  ENABLES: "#4ade80",
+  PART_OF: "#a78bfa",
+  USED_BY: "#34d399",
+  REPLACES: "#f472b6",
 };
 
 export default function GraphRoute() {
+  const { id: vaultId } = useParams<{ id?: string }>();
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
-  const [data, setData] = useState<GraphData | null>(null);
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.graph().then(setData).finally(() => setLoading(false));
-  }, []);
+    const fetch = vaultId
+      ? api.vaultGraph(vaultId)
+      : api.graph();
+    fetch
+      .then((data) => {
+        setNodes(data.nodes);
+        setEdges(data.edges);
+      })
+      .finally(() => setLoading(false));
+  }, [vaultId]);
 
   useEffect(() => {
-    if (!data || !containerRef.current) return;
-    if (data.nodes.length === 0) return;
+    if (!nodes.length || !containerRef.current) return;
 
-    // Cleanup previous instance
     if (sigmaRef.current) {
       sigmaRef.current.kill();
       sigmaRef.current = null;
@@ -44,28 +55,27 @@ export default function GraphRoute() {
 
     const graph = new Graph({ multi: false });
 
-    data.nodes.forEach((n) => {
+    nodes.forEach((n) => {
       graph.addNode(n.id, {
         label: n.label,
-        size: 8,
-        color: CATEGORY_COLORS[n.category] ?? "#64748b",
+        size: 6 + Math.min(n.source_count * 2, 10),
+        color: ENTITY_COLORS[n.entity_type] ?? "#64748b",
         x: Math.random() * 100,
         y: Math.random() * 100,
       });
     });
 
-    data.edges.forEach((e) => {
+    edges.forEach((e) => {
       if (!graph.hasEdge(e.source, e.target)) {
         graph.addEdge(e.source, e.target, {
-          size: Math.min(e.weight, 4),
-          color: "#1e293b",
+          size: 1.5,
+          color: RELATIONSHIP_COLORS[e.type] ?? "#1e293b",
         });
       }
     });
 
-    // Layout
     forceAtlas2.assign(graph, {
-      iterations: 100,
+      iterations: 120,
       settings: forceAtlas2.inferSettings(graph),
     });
 
@@ -84,7 +94,9 @@ export default function GraphRoute() {
       sigma.kill();
       sigmaRef.current = null;
     };
-  }, [data, navigate]);
+  }, [nodes, edges, navigate]);
+
+  const backPath = vaultId ? `/vault/${vaultId}` : "/";
 
   if (loading) {
     return (
@@ -94,34 +106,55 @@ export default function GraphRoute() {
     );
   }
 
-  if (!data || data.nodes.length === 0) {
+  if (!nodes.length) {
     return (
       <div className="text-center py-24 text-wiki-muted">
         <div className="text-4xl mb-4">⬡</div>
         <p className="text-lg font-medium text-wiki-text mb-1">Graph is empty</p>
-        <p className="text-sm">Capture some pages first. Edges appear between pages sharing tags or category.</p>
+        <p className="text-sm">Capture some pages first. Edges appear from typed relationships.</p>
+        <Link to={backPath} className="text-wiki-accent text-sm hover:underline mt-4 inline-block">
+          ← Back
+        </Link>
       </div>
     );
   }
 
-  const hoveredData = hoveredNode ? data.nodes.find((n) => n.id === hoveredNode) : null;
+  const hoveredData = hoveredNode ? nodes.find((n) => n.id === hoveredNode) : null;
+  const hoveredEdges = hoveredNode
+    ? edges.filter((e) => e.source === hoveredNode || e.target === hoveredNode)
+    : [];
 
   return (
     <div className="relative">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-wiki-text">Knowledge Graph</h1>
+        <div className="flex items-center gap-3">
+          <Link to={backPath} className="text-sm text-wiki-muted hover:text-wiki-accent transition-colors">
+            ←
+          </Link>
+          <h1 className="text-xl font-bold text-wiki-text">Knowledge Graph</h1>
+        </div>
         <div className="flex items-center gap-4 text-xs text-wiki-muted">
-          <span>{data.nodes.length} pages</span>
-          <span>{data.edges.length} connections</span>
+          <span>{nodes.length} pages</span>
+          <span>{edges.length} connections</span>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-          <span key={cat} className="flex items-center gap-1 text-xs text-wiki-muted">
-            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: color }} />
-            {cat}
+      {/* Legend: entity types */}
+      <div className="flex flex-wrap gap-3 mb-2">
+        {Object.entries(ENTITY_COLORS).map(([type, color]) => (
+          <span key={type} className="flex items-center gap-1 text-xs text-wiki-muted capitalize">
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: color }} />
+            {type}
+          </span>
+        ))}
+      </div>
+
+      {/* Legend: relationship types */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        {Object.entries(RELATIONSHIP_COLORS).map(([type, color]) => (
+          <span key={type} className="flex items-center gap-1 text-xs text-wiki-muted">
+            <span className="w-4 h-0.5 inline-block" style={{ backgroundColor: color }} />
+            {type}
           </span>
         ))}
       </div>
@@ -129,14 +162,30 @@ export default function GraphRoute() {
       <div
         ref={containerRef}
         className="w-full rounded-xl border border-wiki-border bg-wiki-surface"
-        style={{ height: "calc(100vh - 280px)", minHeight: 500 }}
+        style={{ height: "calc(100vh - 320px)", minHeight: 480 }}
       />
 
       {hoveredData && (
-        <div className="absolute top-24 right-4 bg-wiki-surface border border-wiki-border rounded-xl px-4 py-3 text-sm max-w-xs shadow-xl">
+        <div className="absolute top-32 right-4 bg-wiki-surface border border-wiki-border rounded-xl px-4 py-3 text-sm max-w-xs shadow-xl">
           <p className="font-semibold text-wiki-text mb-0.5">{hoveredData.label}</p>
-          <p className="text-wiki-accent text-xs">{hoveredData.category}</p>
-          <p className="text-wiki-muted text-xs mt-1">{hoveredData.domain}</p>
+          <p className="text-wiki-accent text-xs capitalize mb-1">{hoveredData.entity_type}</p>
+          <p className="text-wiki-muted text-xs">{hoveredData.source_count} source{hoveredData.source_count !== 1 ? "s" : ""} · {hoveredData.confidence} confidence</p>
+          {hoveredEdges.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-wiki-border space-y-1">
+              {hoveredEdges.slice(0, 3).map((e, i) => (
+                <p key={i} className="text-xs text-wiki-muted">
+                  <span
+                    className="font-medium"
+                    style={{ color: RELATIONSHIP_COLORS[e.type] ?? "#64748b" }}
+                  >
+                    {e.type}
+                  </span>{" "}
+                  {e.source === hoveredNode ? "→" : "←"}{" "}
+                  {nodes.find((n) => n.id === (e.source === hoveredNode ? e.target : e.source))?.label}
+                </p>
+              ))}
+            </div>
+          )}
           <p className="text-wiki-muted text-xs mt-2">Click to open →</p>
         </div>
       )}
