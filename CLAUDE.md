@@ -41,6 +41,64 @@ helps the user build things.
 
 ---
 
+## Decisions Log (from brainstorming)
+
+These are answers the user gave during the brainstorming session.
+Treat them as **locked decisions**, not suggestions. Future AI assistants
+working on this codebase should re-read these before changing direction.
+
+### D1 — Biggest fear / failure mode
+> "Getting things wrongly placed could become overwhelming, and I'd forget
+> where I saved things. Maybe later we can analyze a vault, find clusters,
+> detect outliers, and suggest creating a new vault from them. Complex —
+> plan for the future."
+
+**Implication**: build cluster-based outlier detection (vault health). Future phase, not now.
+
+### D2 — Solo or team?
+> "I am the user. I create my personal vaults. Personal brain. Some other
+> user comes and creates their own personal brain — that is private. I
+> want that. Team support (10 people pulling captures together to build
+> shared vaults) — we are not at that stage. Don't build that now."
+
+**Implication**:
+- Multi-user from day one (each user fully private).
+- All tables have `user_id` + Row-Level Security.
+- No team / shared vault tables. No `vault_members`. No org concept.
+- Future: when team support comes, add `vault_members` + relax RLS — but only when explicitly asked.
+
+### D3 — Success metric (3 concrete bars)
+The user defined three goals, each tied to a concrete bar:
+
+> 1. "I never lose an article again" → bar: **capture reliability**
+> 2. "I build better products using my saved research" → bar: **knowledge retrieval and application**
+> 3. "I learn more deeply from what I read" → bar: **engagement loops and teach-back**
+
+**Implication**: each phase must have a *success test* matching one of these bars (see Build Plan).
+
+### D4 — Beta-user patience / build cadence
+> "I want features built faster AND well-polished."
+
+**Implication** (the contract):
+- **Within a phase**: polish before moving on. No half-finished features.
+- **Between phases**: move fast. Don't gold-plate Phase 1 before starting Phase 2.
+- **"Daily-usable" is the bar** — not "shippable to strangers."
+- **Always polished**: capture flow + data model. They're the spine.
+- **OK to be rough**: visual polish, edge-case errors, mobile layout — until the system proves itself.
+
+### D5 — Learn vs use (the real pain)
+> "I gathered information for my GSI application. But I never built features
+> from what I captured. The data is scattered in LinkedIn saved pages, etc.
+> I want to actually utilize that information."
+
+**Implication**: the catastrophic failure of every existing tool is *captured but never used*.
+- **Heavy tilt toward USE**: Phase 4 (chat) and Phase 5 (MCP) are critical, not optional.
+- **Phase 3 (typed graph) deprioritized** — the graph is a viewing tool; chat + MCP are application tools.
+- **Phase 4 swaps with Phase 3** — chat before pretty graph.
+- Engagement loops (digest, teach-back) still matter for the "learn" half, but they ride alongside MCP.
+
+---
+
 ## How We Differ From Karpathy's LLM Wiki
 
 | Karpathy's LLM Wiki | Our LLM Wiki Maker |
@@ -261,10 +319,23 @@ relationships
 | Backend | **Python + FastAPI** | Best scraping libs, great Anthropic SDK |
 | LLM | **Claude (claude-sonnet-4-6)** | Best for structured extraction |
 | Frontend | **React 19 + Vite + TS + Tailwind** | Same as wiki-os |
+| Frontend base | **Fork wiki-os UI** (https://github.com/Ansub/wiki-os) | Don't reinvent — clone, then adapt |
 | Graph | **Graphology + Sigma.js** | Same as wiki-os |
 | Extension | **Chrome Manifest V3** | Covers Chrome/Edge/Brave |
 | Deployment | **Render** | Backend + frontend, simple |
 | MCP | **@modelcontextprotocol/sdk** | Official Anthropic standard |
+
+---
+
+## Frontend Strategy
+
+**We do NOT build a frontend from scratch.** We fork wiki-os and adapt it.
+
+- **Source**: https://github.com/Ansub/wiki-os (MIT licensed, React + Vite + TS + Tailwind)
+- **What wiki-os already has**: dark theme, sidebar navigation, markdown rendering, search, Sigma.js graph view, file-tree-style page list, polished UX
+- **What we change**: replace its local-file backend calls with our FastAPI + Supabase backend; add the multi-vault concept (wiki-os is single-vault); add the capture flow (paste URL → vault picker → save); add citations panel on each wiki page
+- **What we keep**: visual design, layout, graph component, markdown rendering, dark theme
+- **Why**: wiki-os is the user's chosen UI reference. Re-creating its UI from memory in raw Tailwind (as I did in the abandoned V1 frontend) is a waste. Replicate by cloning, not by improvising.
 
 ---
 
@@ -348,12 +419,27 @@ Repo: `shankara-93/wiki-maker`
 
 ## Build Plan
 
-### Phase 0 — Done (V1 Foundation)
-Flat wiki system: single `wiki_pages` table, no vaults, fixed categories.
-Backend + extension + frontend all working.
+> Each phase has a **deliverable** (what gets built) and a **success test**
+> (how the user knows it actually solved their problem). The success tests
+> map back to D3 (the three goals: never lose / build better / learn deeper).
+>
+> **Rule (D4)**: each phase must work end-to-end and be daily-usable before
+> the next phase starts. No gold-plating between phases.
 
-**Gaps**: no vaults, no source separation, no typed relationships, no confidence scoring,
-no engagement loops, no MCP server.
+---
+
+### Phase 0 — Done (V1 Foundation, throwaway)
+
+A simplified flat wiki was coded as a sketch:
+- Single `wiki_pages` table, fixed categories, no vaults
+- Backend + Chrome extension + freehand Tailwind frontend
+
+**Decision**: backend + schema sketch is useful as a starting skeleton.
+The freehand frontend is **thrown away** — replaced by a wiki-os fork.
+See "Frontend Strategy" above.
+
+**Gaps it has**: no vaults, no source separation, no typed relationships,
+no confidence scoring, no engagement loops, no MCP server.
 
 ---
 
@@ -366,34 +452,40 @@ no engagement loops, no MCP server.
 - New `captures` table (raw content, immutable source of truth)
 - Updated `wiki_pages` (add vault_id, entity_type, confidence, source_count, tags as text[])
 - New `citations` table (claim → capture mapping)
-- New `relationships` table (typed knowledge graph edges)
+- New `relationships` table (typed knowledge graph edges) — table only, no UI yet
 - pgvector extension + embedding columns on wiki_pages and captures
-- All RLS policies updated for vault isolation
+- All RLS policies updated for vault isolation (D2: each user fully private)
 
 **Backend changes**:
 - `vaults.py` — CRUD: create, list, get, update, delete vault
-- `captures.py` — store raw content (immutable), re-process endpoint
+- `captures.py` (or merged into `database.py`) — store raw content immutably
 - Updated `main.py` — new routes: `/api/vaults`, `/api/captures`, vault-scoped wikis
 - Updated `database.py` — all queries scoped to vault_id
-- Updated `llm_processor.py` — two-step: (1) analyze for vault suggestion, (2) compile wiki page
+- Updated `llm_processor.py` — two-step: (1) analyze for vault suggestion, (2) compile wiki page with citations
 
-**Frontend changes**:
+**Frontend changes** (built on a wiki-os fork):
+- Fork wiki-os into `/frontend` and adapt its data layer to call our FastAPI
 - New `/vaults` route — vault list, create vault modal
 - New `/vault/:id` route — vault dashboard (pages + graph + captures)
-- Updated capture flow — vault picker step after capture
+- Capture flow: paste URL → AI analyzes → modal "save to which vault?" → save
 - Vault sidebar replaces category sidebar
 
 **Extension changes**:
 - Show vault suggestion in popup ("Save to GSI vault? 87% match")
 - Let user pick different vault or create new
 
-**Deliverable**: A working vault-scoped wiki. Captures are stored separately from wiki pages. User can create vaults and all captures/pages live in a vault.
+**Deliverable**: A working vault-scoped wiki. Captures stored separately from wiki pages. User can create vaults; all captures/pages live in a vault.
+
+**Success test (maps to D3 goal #1: "never lose an article")**:
+> The user captures 10 real articles into 2-3 vaults over a week.
+> Zero captures fail. Zero captures get lost or end up in the wrong place
+> without the user noticing. The user can find any one of them in <30 seconds.
 
 ---
 
 ### Phase 2 — AI Vault Intelligence
 
-**Goal**: AI suggests the right vault, deduplicates entity pages, builds citations.
+**Goal**: AI suggests the right vault, deduplicates entity pages, builds citations reliably.
 
 **Features**:
 - `POST /api/vaults/suggest` — given content, return ranked vault suggestions with confidence %
@@ -405,11 +497,39 @@ no engagement loops, no MCP server.
 
 **Deliverable**: Captures flow to the right vault automatically. Pages accumulate evidence over time instead of duplicating. Every claim traces back to a source.
 
+**Success test (maps to D3 goal #1 + capture quality)**:
+> When the user captures a new article, the AI's top vault suggestion is
+> correct ≥80% of the time. When two articles cover the same concept, they
+> merge into one page with 2 sources, not two duplicate pages.
+
 ---
 
-### Phase 3 — Knowledge Graph + Typed Relationships
+### Phase 3 — Hybrid Search + Chat Interface
+*(swapped earlier with the typed-graph phase per D5 — application beats viewing)*
 
-**Goal**: Replace untyped tag-sharing edges with semantic typed relationships.
+**Goal**: Make the vault queryable conversationally. This is where the user finally **uses** what they captured.
+
+**Features**:
+- `pgvector` embeddings generated for every wiki page and capture on save
+- `POST /api/search` — hybrid: keyword (pg FTS) + semantic (cosine similarity) + graph traversal, per vault or global
+- `POST /api/vault/:id/chat` — conversational retrieval: user asks question, backend retrieves relevant pages via hybrid search, Claude synthesizes answer with citations
+- Chat UI: `/vault/:id/chat` route, message history, citation chips on every answer
+- Source display: every answer shows which captures it drew from, with quotes
+- Cross-vault chat: optionally query across all vaults at once
+
+**Deliverable**: User can ask "What do I know about RAG limitations in my AI vault?" and get a cited, synthesized answer.
+
+**Success test (maps to D3 goal #2: "build better products from saved research")**:
+> The user starts a real project task (e.g. building a GSI feature),
+> opens the chat, asks a question, and gets back ≥1 useful insight from
+> their saved captures that they actually use in the work.
+
+---
+
+### Phase 4 — Knowledge Graph + Typed Relationships
+*(was Phase 3; deprioritized — graph is a viewing tool, useful but not the core fix)*
+
+**Goal**: Replace untyped edges with semantic typed relationships.
 
 **Features**:
 - LLM extracts typed relationships during wiki compilation: REQUIRES | CONTRADICTS | BUILDS_ON | EXAMPLES | ENABLES | PART_OF | USED_BY | REPLACES
@@ -420,30 +540,19 @@ no engagement loops, no MCP server.
 
 **Deliverable**: The knowledge graph shows how concepts connect semantically, not just by tag overlap.
 
----
-
-### Phase 4 — Hybrid Search + Chat Interface
-
-**Goal**: Make the vault queryable conversationally.
-
-**Features**:
-- `pgvector` embeddings generated for every wiki page and capture on save
-- `POST /api/search` — hybrid: keyword (pg FTS) + semantic (cosine similarity) + graph traversal, per vault or global
-- `POST /api/vault/:id/chat` — conversational retrieval: user asks question, backend retrieves relevant pages via hybrid search, Claude synthesizes answer with citations
-- Chat UI: `/vault/:id/chat` route, message history, citation chips on every answer
-- Source display: every answer shows which captures it drew from, with quotes
-
-**Deliverable**: User can ask "What do I know about RAG limitations in my AI vault?" and get a cited, synthesized answer.
+**Success test**:
+> The user clicks a node in their vault graph and the connections shown
+> tell them something they wouldn't have noticed in the flat list view.
 
 ---
 
 ### Phase 5 — MCP Server + Engagement Loops
 
-**Goal**: Feed the vault back into daily work; keep the user from offloading without learning.
+**Goal**: Feed the vault back into daily work; keep the user from offloading without learning. **This is the "killer feature" cluster** (D5: solve "captured but never used").
 
 **MCP Server** (`mcp/server.py`):
 - Tools: `list_vaults`, `search_vault`, `get_wiki_page`, `get_related`, `ask_vault`, `save_to_vault`
-- Runs alongside FastAPI as a separate process
+- Runs alongside FastAPI as a separate process (or same process, separate route)
 - Auth: same Supabase JWT
 - Config: user drops `~/.claude/mcp.json` with server URL + token
 
@@ -452,22 +561,30 @@ no engagement loops, no MCP server.
 - Weekly digest: `GET /api/engage/digest` — 3 ideas from the week, "do you still remember?"
 - Teach-back mode: `POST /api/engage/teach` — user explains a concept → Claude grades it
 
-**Vault Health** (outlier detection):
+**Vault Health** (outlier detection — see D1):
 - `POST /api/vault/:id/health` — cluster pages by embedding similarity, surface outliers
 - Returns: pages that don't fit dominant cluster + suggested destination vault or new vault name
 - UI: "Vault Health" panel in vault settings
 
-**Deliverable**: The vault feeds knowledge back into Claude Code/Cursor sessions. Weekly prompts prevent pure cognitive offloading. Vault health catches organizational drift.
+**Deliverable**: The vault feeds knowledge back into Claude Code/Cursor. Weekly prompts prevent pure cognitive offloading. Vault health catches organizational drift.
+
+**Success test (maps to D3 goals #2 + #3: "use" and "learn")**:
+> 1. **Use**: while building something in Claude Code, the agent calls
+>    `search_vault` and surfaces a capture from weeks ago that helps the
+>    current task. The user sees the citation in the agent's output.
+> 2. **Learn**: the user receives a weekly digest, recalls 2/3 of the ideas
+>    without re-reading the source. Or completes a teach-back and the AI
+>    confirms understanding.
 
 ---
 
 ## Current Phase Status
 
-| Phase | Status | Description |
-|---|---|---|
-| 0 | ✅ Done | V1 flat wiki system |
-| 1 | 🔨 Building | Source-anchored vaults |
-| 2 | ⬜ Planned | AI vault intelligence |
-| 3 | ⬜ Planned | Typed knowledge graph |
-| 4 | ⬜ Planned | Hybrid search + chat |
-| 5 | ⬜ Planned | MCP + engagement loops |
+| Phase | Status | Description | Success bar |
+|---|---|---|---|
+| 0 | ✅ Done (sketch, frontend thrown away) | V1 flat wiki, backend + schema kept as skeleton | n/a |
+| 1 | 🔨 Building | Source-anchored vaults | "Never lose an article" |
+| 2 | ⬜ Planned | AI vault intelligence | Top vault suggestion correct ≥80% |
+| 3 | ⬜ Planned (was 4) | Hybrid search + chat | Query saved knowledge during real work |
+| 4 | ⬜ Planned (was 3) | Typed knowledge graph | Connections reveal non-obvious links |
+| 5 | ⬜ Planned | MCP + engagement + vault health | MCP cited in Claude Code; weekly digest works |
