@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Wiki Clipper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      width: 340px;
+      background: #0f0f13;
+      color: #e5e7eb;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 16px 20px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .header span {
+      font-size: 11px;
+      color: #64748b;
+      margin-left: auto;
+    }
+
+    .content { padding: 16px 20px; }
+
+    .page-info {
+      background: #1e1e2e;
+      border: 1px solid #2d2d3d;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .page-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #c4c4d4;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .page-url {
+      font-size: 11px;
+      color: #6366f1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #5558e8, #7c4de8);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: none;
+    }
+
+    .status.loading {
+      background: #1e293b;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status.success {
+      background: #052e16;
+      border: 1px solid #16a34a;
+      color: #4ade80;
+      display: block;
+    }
+
+    .status.error {
+      background: #2d0a0a;
+      border: 1px solid #dc2626;
+      color: #f87171;
+      display: block;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #334155;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #1e293b;
+      margin: 14px 0;
+    }
+
+    .settings-link {
+      font-size: 11px;
+      color: #475569;
+      text-align: center;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .settings-link:hover { color: #6366f1; }
+
+    /* Settings panel */
+    .settings-panel { display: none; padding: 0 20px 16px; }
+    .settings-panel.open { display: block; }
+
+    .form-group { margin-bottom: 10px; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 4px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px 10px;
+      background: #1e1e2e;
+      border: 1px solid #2d2d3d;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 12px;
+      outline: none;
+    }
+
+    input:focus { border-color: #6366f1; }
+
+    .btn-save {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #2d3748;
+      margin-top: 4px;
+      font-size: 12px;
+      padding: 8px;
+    }
+
+    .btn-save:hover { background: #2d3748; color: #e2e8f0; }
+
+    .result-card {
+      background: #1e1e2e;
+      border: 1px solid #16a34a;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .result-card.show { display: block; }
+    .result-title { font-size: 13px; font-weight: 600; color: #4ade80; margin-bottom: 4px; }
+    .result-category { font-size: 11px; color: #6366f1; margin-bottom: 6px; }
+    .result-summary { font-size: 11px; color: #94a3b8; line-height: 1.5; }
+    .open-wiki { font-size: 11px; color: #6366f1; cursor: pointer; margin-top: 6px; display: inline-block; text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">📖</div>
+  <h1>LLM Wiki</h1>
+  <span id="userEmail"></span>
+</div>
+
+<div class="content">
+  <div class="page-info">
+    <div class="page-title" id="pageTitle">Loading...</div>
+    <div class="page-url" id="pageUrl"></div>
+  </div>
+
+  <button class="btn btn-primary" id="captureBtn">
+    ✦ Save to Wiki
+  </button>
+
+  <div class="status loading" id="statusLoading">
+    <div class="spinner"></div>
+    <span id="statusLoadingText">Processing with AI...</span>
+  </div>
+
+  <div class="status success" id="statusSuccess"></div>
+  <div class="status error" id="statusError"></div>
+
+  <div class="result-card" id="resultCard">
+    <div class="result-title" id="resultTitle"></div>
+    <div class="result-category" id="resultCategory"></div>
+    <div class="result-summary" id="resultSummary"></div>
+    <span class="open-wiki" id="openWiki">Open in wiki →</span>
+  </div>
+
+  <hr class="divider" />
+  <div class="settings-link" id="settingsToggle">⚙ Settings</div>
+</div>
+
+<div class="settings-panel" id="settingsPanel">
+  <div class="form-group">
+    <label>API URL</label>
+    <input type="url" id="apiUrl" placeholder="https://your-api.onrender.com" />
+  </div>
+  <div class="form-group">
+    <label>Auth Token (Supabase JWT)</label>
+    <input type="password" id="authToken" placeholder="eyJ..." />
+  </div>
+  <div class="form-group">
+    <label>Wiki URL</label>
+    <input type="url" id="wikiUrl" placeholder="https://your-wiki.onrender.com" />
+  </div>
+  <button class="btn btn-save" id="saveSettings">Save Settings</button>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
