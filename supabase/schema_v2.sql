@@ -22,11 +22,13 @@ create table if not exists vaults (
   vault_prompt  text,                   -- custom AI instructions for this vault
   link_types    jsonb not null default  -- allowed relationship types
                 '["REQUIRES","CONTRADICTS","BUILDS_ON","EXAMPLES","ENABLES","PART_OF","USED_BY","REPLACES"]',
-  fingerprint   jsonb not null default '{}',  -- {topics: [], entities: [], keywords: []}
-  page_count    int not null default 0,
-  capture_count int not null default 0,
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  fingerprint      jsonb not null default '{}',  -- {topics: [], entities: [], keywords: []}
+  page_count       int not null default 0,
+  capture_count    int not null default 0,
+  status           text not null default 'active',  -- active | archived | deleted
+  last_activity_at timestamptz not null default now(),
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
 );
 
 create index if not exists vaults_user_idx on vaults(user_id);

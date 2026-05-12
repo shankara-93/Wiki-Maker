@@ -49,7 +49,7 @@ See `docs/build-plan.md` for full details.
 
 | File | Read when you need to know about |
 |---|---|
-| `docs/decisions.md` | Why decisions were made (D1–D5 brainstorming answers) |
+| `docs/decisions.md` | Why decisions were made (D1–D11 brainstorming answers) |
 | `docs/build-plan.md` | What each phase builds + success test per phase |
 | `docs/architecture.md` | Data model, system architecture, tech stack, frontend strategy |
 | `docs/features.md` | Full feature list by category |

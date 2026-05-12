@@ -168,3 +168,73 @@ Image URLs stored in `captures.media_items` (jsonb). Descriptions added at captu
 - **Phase 1**: extract YouTube transcript when URL is a YouTube page. Store image URLs only (no vision yet).
 - **Phase 2**: add Claude Vision for meaningful images (architecture diagrams, charts, code screenshots).
 - **Not in scope**: downloading video files, Whisper transcription — too complex, too much storage.
+
+---
+
+## D10 — First-Time User / Zero Vault State
+
+**Problem**: new user has no vaults. Capture bar works but `/api/capture/suggest` has nothing
+to compare against. Flow would break or return empty suggestions.
+
+**Rule**: when user has zero vaults, AI analyses the captured content and proposes a vault name
++ description. User sees an editable form pre-filled by AI — they can change the name before
+confirming. Vault is created and capture is saved in one single step.
+
+**Flow**:
+```
+User pastes first URL (no vaults exist)
+         ↓
+AI analyses content → proposes vault name + description
+         ↓
+UI shows: "Create your first vault?"
+          [GSI Application        ]  ← editable, pre-filled by AI
+          [Research for GSI project]  ← editable
+         ↓
+User edits if needed → clicks "Create & Save"
+         ↓
+Vault created + capture saved in one step
+```
+
+**Why (b) not (a) or (c)**:
+- (a) Force vault creation first → friction, dead state for new users
+- (c) Default Inbox vault → adds a concept (Inbox) that conflicts with "vaults are dynamic"
+- (b) AI proposes, user confirms with edit option → zero friction, consistent with "AI suggests, user decides"
+
+---
+
+## D11 — Vault Lifecycle (Archive vs Delete)
+
+**Problem**: projects end. Vaults accumulate. User doesn't want to lose old knowledge
+but doesn't want old vaults cluttering the active list.
+
+**Three vault states**:
+
+| State | Description | How to get there |
+|---|---|---|
+| **Active** | Normal. Captures can be added. Shown in vault list. | Default on creation |
+| **Archived** | Read-only. Hidden from main list. Still searchable + MCP-accessible. | Manual or auto (inactivity) |
+| **Deleted** | Permanent. Everything gone. No recovery. | Manual only, double confirmation |
+
+**Auto-archive trigger**:
+- No new captures added for **90 days** (configurable per vault)
+- System surfaces prompt: *"GSI Application hasn't been updated in 90 days. Archive it?"*
+- User confirms → archived. User dismisses → reminder again in 30 days.
+
+**What "Archived" means in practice**:
+- Hidden from vault list by default
+- "Show archived vaults" toggle to surface them
+- Still fully searchable (global search + MCP)
+- Can un-archive anytime (project restarts)
+- Cannot add new captures while archived
+- Wiki pages are read-only
+
+**Delete rules**:
+- Requires double confirmation: *"This will permanently delete X captures and Y pages. Type the vault name to confirm."*
+- No soft delete, no recovery after confirmation
+- Cascade: vault → captures → wiki_pages → citations → relationships all deleted
+
+**Schema implication**: add `status` column to `vaults` table:
+```
+status  text not null default 'active'  -- active | archived | deleted
+last_activity_at  timestamptz           -- updated on every new capture
+```

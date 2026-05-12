@@ -14,10 +14,12 @@ vaults
   vault_prompt  text            -- custom AI instructions per vault
   link_types    jsonb           -- allowed relationship types
   fingerprint   jsonb           -- {topics, entities, keywords} for AI matching
-  page_count    int
-  capture_count int
-  created_at    timestamptz
-  updated_at    timestamptz
+  page_count       int
+  capture_count    int
+  status           text          -- active | archived | deleted (see D11)
+  last_activity_at timestamptz   -- updated on every new capture
+  created_at       timestamptz
+  updated_at       timestamptz
 ```
 
 ### Captures (raw, immutable — source of truth)
