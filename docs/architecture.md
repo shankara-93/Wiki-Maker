@@ -33,6 +33,8 @@ captures
   raw_content   text            -- ORIGINAL, never modified
   raw_html      text            -- full outerHTML (extension only)
   why_saved     text            -- capture-time "why did you save this?"
+  content_hash  text            -- SHA256 of raw_content (for duplicate detection)
+  media_items   jsonb           -- [{type, url, description}] images + video transcript
   embedding     vector(1536)
   captured_at   timestamptz
 ```

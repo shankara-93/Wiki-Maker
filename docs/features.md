@@ -7,10 +7,18 @@ All features planned for LLM Wiki Maker. See `docs/build-plan.md` for which phas
 ## Capture
 - One-click Chrome extension (any web page)
 - Manual URL paste in web UI
-- Multi-content: articles, LinkedIn posts, Twitter threads, YouTube (transcripts)
+- Multi-content: articles, LinkedIn posts, Twitter threads, YouTube (transcripts via YouTube subtitle API)
 - Extension sends full rendered HTML for JS-heavy pages (LinkedIn, Twitter, SPAs)
 - Capture-time prompt: "Why did you save this?" (one sentence, stored with capture)
+- **YouTube**: transcript extracted automatically via YouTube subtitle API (free, no key needed)
+- **Images**: meaningful images (diagrams, charts, code screenshots) processed via Claude Vision; decorative images ignored
+- **LinkedIn/Twitter video**: no public transcript API — capture surrounding text + caption only
 - Highlight text → save just that quote (future)
+
+## Deduplication (see docs/decisions.md D6–D8)
+- **Same URL re-captured**: always allowed — creates new timestamped snapshot. Pipeline: hash check → embedding similarity → difflib delta → LLM (cheapest first, stop early). Old capture never modified.
+- **Different URL, same concept**: before creating wiki page, compare new capture embedding against all existing wiki pages in vault via pgvector. Similarity > 0.82 → merge into existing page (update, don't duplicate). Threshold configurable per vault.
+- **UI notice**: gentle warning when re-capturing a known URL — not a block, just awareness
 
 ## Vault Intelligence
 - AI suggests existing vault match with confidence % ("GSI Application — 87% match")

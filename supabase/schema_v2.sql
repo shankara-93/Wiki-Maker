@@ -51,7 +51,9 @@ create table if not exists captures (
   raw_content   text not null,                    -- ORIGINAL, never modified
   raw_html      text,                             -- full outerHTML (extension only)
   why_saved     text,                             -- capture-time "why did you save this?"
-  embedding     vector(1536),                     -- for semantic search
+  content_hash  text,                             -- SHA256 of raw_content for duplicate detection
+  media_items   jsonb not null default '[]',      -- [{type, url, description}] images + transcripts
+  embedding     vector(1536),                     -- for semantic search (dedup + retrieval)
   captured_at   timestamptz not null default now()
 );
 
